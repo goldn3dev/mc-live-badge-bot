@@ -15,22 +15,25 @@ export const data = new SlashCommandBuilder()
     o.setName('minecraft').setDescription('Your Minecraft Java username').setRequired(true).setMaxLength(16),
   );
 
-export async function execute(interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
+/**
+ * Validate both accounts and store the link for a Discord user. Shared by `/link` and the link panel modal.
+ * Throws UserError (safe to show) for invalid names, taken accounts and API outages.
+ * Returns the resolved { mc, twitch } records.
+ */
+export async function linkAccounts(user, minecraftName, twitchName) {
   const [mc, twitch] = await Promise.all([
-    lookupMinecraftUser(interaction.options.getString('minecraft', true).trim()),
-    lookupTwitchUser(interaction.options.getString('twitch', true)),
+    lookupMinecraftUser(minecraftName.trim()),
+    lookupTwitchUser(twitchName),
   ]);
 
-  const taken = await findConflict(interaction.user.id, mc.uuid, twitch.id);
+  const taken = await findConflict(user.id, mc.uuid, twitch.id);
   if (taken) {
     const what = taken.mc_uuid === mc.uuid ? `Minecraft account \`${mc.username}\`` : `Twitch channel \`${twitch.login}\``;
     throw new UserError(`The ${what} is already linked to another Discord user.`);
   }
 
   // Relinking to a different Minecraft account: clear the badge from the old one.
-  const previous = await getStreamer(interaction.user.id);
+  const previous = await getStreamer(user.id);
   if (previous?.is_live && previous.mc_uuid !== mc.uuid) {
     try {
       await minecraft.setOffline(previous.mc_uuid);
@@ -40,13 +43,25 @@ export async function execute(interaction) {
   }
 
   await saveStreamer({
-    discord_id: interaction.user.id,
+    discord_id: user.id,
     mc_uuid: mc.uuid,
     mc_username: mc.username,
     twitch_id: twitch.id,
     twitch_login: twitch.login,
   });
-  console.log(`[link] ${interaction.user.tag}: ${mc.username} (${mc.uuid}) <-> twitch/${twitch.login}`);
+  console.log(`[link] ${user.tag}: ${mc.username} (${mc.uuid}) <-> twitch/${twitch.login}`);
+
+  return { mc, twitch };
+}
+
+export async function execute(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const { mc, twitch } = await linkAccounts(
+    interaction.user,
+    interaction.options.getString('minecraft', true),
+    interaction.options.getString('twitch', true),
+  );
 
   const channelUrl = `https://twitch.tv/${twitch.login}`;
   const embed = new EmbedBuilder()

@@ -212,6 +212,7 @@ pm2 restart mc-live-badge          # or: sudo systemctl restart mc-live-badge
 | --- | --- |
 | `/link twitch:<name> minecraft:<name>` | Validates both accounts, stores the link, replies with an embed showing the player's skin bust. Running it again updates your link. |
 | `/unlink` | Deletes your link and removes the badge. If the player is currently live and the Minecraft server can't be reached, the link is kept so you can retry. |
+| `/sendlinkpanel` | Administrators only. Posts an embed with a **Link Account** button in the current channel. Members click it, fill in a Minecraft name and Twitch name in a pop-up form, and are linked with the same checks as `/link`. The button keeps working after bot restarts. The bot needs **View Channel**, **Send Messages** and **Embed Links** in that channel. |
 
 ## How resilience works
 

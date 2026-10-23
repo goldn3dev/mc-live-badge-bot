@@ -6,8 +6,10 @@ import { UserError } from './errors.js';
 import { startScheduler, stopScheduler } from './scheduler.js';
 import * as link from './commands/link.js';
 import * as unlink from './commands/unlink.js';
+import * as sendlinkpanel from './commands/sendlinkpanel.js';
 
-const commands = new Map([link, unlink].map((c) => [c.data.name, c]));
+const { MODAL_ID, OPEN_MODAL_ID, openLinkModal, submitLinkModal } = sendlinkpanel;
+const commands = new Map([link, unlink, sendlinkpanel].map((c) => [c.data.name, c]));
 
 /** Run a startup step, logging when it begins, ends and (if it drags on) that it is still pending. */
 async function step(name, fn) {
@@ -53,17 +55,32 @@ async function registerCommands() {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+/** Pick the handler for an interaction, or null if it is not one of ours. */
+function resolveHandler(interaction) {
+  if (interaction.isChatInputCommand()) {
+    const command = commands.get(interaction.commandName);
+    return command && { label: `/${interaction.commandName}`, run: () => command.execute(interaction) };
+  }
+  // The panel's button is a plain message component, so it keeps working across restarts.
+  if (interaction.isButton() && interaction.customId === OPEN_MODAL_ID) {
+    return { label: 'link button', run: () => openLinkModal(interaction) };
+  }
+  if (interaction.isModalSubmit() && interaction.customId === MODAL_ID) {
+    return { label: 'link modal', run: () => submitLinkModal(interaction) };
+  }
+  return null;
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  const command = commands.get(interaction.commandName);
-  if (!command) return;
+  const handler = resolveHandler(interaction);
+  if (!handler) return;
 
   try {
-    await command.execute(interaction);
+    await handler.run();
   } catch (err) {
     const message =
       err instanceof UserError ? err.message : 'Something went wrong. Please try again later.';
-    if (!(err instanceof UserError)) console.error(`[discord] /${interaction.commandName} failed:`, err);
+    if (!(err instanceof UserError)) console.error(`[discord] ${handler.label} failed:`, err);
     try {
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({ content: message, embeds: [] });
