@@ -26,6 +26,20 @@ async function step(name, fn) {
   }
 }
 
+async function probeDiscord() {
+  const started = Date.now();
+  try {
+    const res = await fetch('https://discord.com/api/v10/gateway', { signal: AbortSignal.timeout(10_000) });
+    const body = (await res.text()).replace(/\s+/g, ' ').slice(0, 200);
+    console.log(
+      `[probe] discord.com/api -> HTTP ${res.status} in ${Date.now() - started}ms ` +
+        `(server=${res.headers.get('server')}, retry-after=${res.headers.get('retry-after')}, cf-ray=${res.headers.get('cf-ray')}) ${body}`,
+    );
+  } catch (err) {
+    console.error(`[probe] discord.com/api unreachable after ${Date.now() - started}ms: ${err.cause?.code ?? err.message}`);
+  }
+}
+
 async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(config.discord.token);
   rest.on('rateLimited', (info) =>
@@ -93,6 +107,9 @@ async function main() {
   );
 
   await step('initialising database', initDatabase);
+
+  // Diagnostic: shows whether this host can reach Discord's API at all, and what it answers with.
+  await probeDiscord();
 
   // Log in first so the bot shows online even if command registration is slow or fails.
   await step('logging in to Discord', () => client.login(config.discord.token));
