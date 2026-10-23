@@ -8,7 +8,7 @@ import * as link from './commands/link.js';
 import * as unlink from './commands/unlink.js';
 import * as sendlinkpanel from './commands/sendlinkpanel.js';
 
-const { MODAL_ID, OPEN_MODAL_ID, openLinkModal, submitLinkModal } = sendlinkpanel;
+const { MODAL_ID, OPEN_MODAL_ID, UNLINK_ID, openLinkModal, submitLinkModal, unlinkFromPanel } = sendlinkpanel;
 const commands = new Map([link, unlink, sendlinkpanel].map((c) => [c.data.name, c]));
 
 /** Run a startup step, logging when it begins, ends and (if it drags on) that it is still pending. */
@@ -64,6 +64,9 @@ function resolveHandler(interaction) {
   // The panel's button is a plain message component, so it keeps working across restarts.
   if (interaction.isButton() && interaction.customId === OPEN_MODAL_ID) {
     return { label: 'link button', run: () => openLinkModal(interaction) };
+  }
+  if (interaction.isButton() && interaction.customId === UNLINK_ID) {
+    return { label: 'unlink button', run: () => unlinkFromPanel(interaction) };
   }
   if (interaction.isModalSubmit() && interaction.customId === MODAL_ID) {
     return { label: 'link modal', run: () => submitLinkModal(interaction) };

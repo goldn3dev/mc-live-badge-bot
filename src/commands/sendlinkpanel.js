@@ -12,9 +12,11 @@ import {
 } from 'discord.js';
 import { UserError } from '../errors.js';
 import { linkAccounts } from './link.js';
+import { unlinkAccount } from './unlink.js';
 
 export const OPEN_MODAL_ID = 'open_link_modal';
 export const MODAL_ID = 'link_account_modal';
+export const UNLINK_ID = 'unlink_account';
 
 export const data = new SlashCommandBuilder()
   .setName('sendlinkpanel')
@@ -34,14 +36,21 @@ export async function execute(interaction) {
     .setColor(0x9146ff)
     .setTitle('Link Minecraft & Twitch')
     .setDescription('Click the button below to link your Minecraft and Twitch accounts for live badges on the server.');
-  const button = new ButtonBuilder()
+  const linkButton = new ButtonBuilder()
     .setCustomId(OPEN_MODAL_ID)
     .setLabel('Link Account')
     .setEmoji('🔗')
     .setStyle(ButtonStyle.Primary);
+  const unlinkButton = new ButtonBuilder()
+    .setCustomId(UNLINK_ID)
+    .setLabel('Unlink Account')
+    .setStyle(ButtonStyle.Danger);
 
   try {
-    await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
+    await interaction.channel.send({
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(linkButton, unlinkButton)],
+    });
   } catch (err) {
     console.error('[sendlinkpanel] could not post the panel:', err.message);
     throw new UserError(
@@ -77,6 +86,13 @@ export async function openLinkModal(interaction) {
       ),
     );
   await interaction.showModal(modal);
+}
+
+/** Unlink button: same as /unlink. */
+export async function unlinkFromPanel(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const row = await unlinkAccount(interaction.user);
+  await interaction.editReply(`Unlinked **${row.mc_username}** from Twitch channel **${row.twitch_login}**.`);
 }
 
 /** Modal submit: run the same validation and storage as /link. */
