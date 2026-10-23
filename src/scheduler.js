@@ -6,9 +6,12 @@ import { getLiveUserIds } from './services/twitch.js';
 let timer = null;
 let stopped = false;
 
-/** One polling pass. Never throws. */
+/** One polling pass. Twitch/Minecraft failures are handled here; the caller guards against anything else. */
 export async function checkOnce() {
-  const streamers = getAllStreamers();
+  // Without a Minecraft endpoint there is nothing to sync; leave the DB flags untouched.
+  if (!minecraft.isConfigured()) return;
+
+  const streamers = await getAllStreamers();
   if (streamers.length === 0) return;
 
   let liveIds;
@@ -25,11 +28,11 @@ export async function checkOnce() {
     try {
       if (isLive && !s.is_live) {
         await minecraft.setLive(s.mc_uuid, s.twitch_login);
-        setLiveFlag(s.discord_id, true);
+        await setLiveFlag(s.discord_id, true);
         console.log(`[scheduler] ${s.mc_username} went LIVE (twitch/${s.twitch_login})`);
       } else if (!isLive && s.is_live) {
         await minecraft.setOffline(s.mc_uuid);
-        setLiveFlag(s.discord_id, false);
+        await setLiveFlag(s.discord_id, false);
         console.log(`[scheduler] ${s.mc_username} went OFFLINE (twitch/${s.twitch_login})`);
       }
     } catch (err) {
@@ -53,7 +56,11 @@ export function startScheduler() {
     if (!stopped) timer = setTimeout(tick, intervalMs);
   };
 
-  console.log(`[scheduler] polling Twitch every ${config.checkIntervalSeconds}s`);
+  console.log(
+    minecraft.isConfigured()
+      ? `[scheduler] polling Twitch every ${config.checkIntervalSeconds}s`
+      : '[scheduler] Minecraft sync not configured, polling is idle until MC_HTTP_URL and MC_SECRET_TOKEN are set',
+  );
   tick();
 }
 

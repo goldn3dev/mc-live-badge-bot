@@ -53,6 +53,9 @@ MC_SECRET_TOKEN=<the http.secret-token value>
 - The badge look and the chat announcement are configured in the plugin's `config.yml` (`badge:` and
   `broadcast:`), not in the bot.
 - The server must be in online mode, since the bot sends real Mojang UUIDs.
+- `MC_HTTP_URL` and `MC_SECRET_TOKEN` are optional at startup. If either is missing the bot still boots (Discord
+  and the health check work, `/link` works) but logs `[Config] ... Minecraft sync will be skipped until set.` and
+  does not poll Twitch. Set both and restart to enable syncing.
 
 ## 4. Run the bot
 
@@ -63,12 +66,29 @@ cp .env.example .env     # on Windows: copy .env.example .env
 npm start
 ```
 
-On start the bot registers `/link` and `/unlink` in your guild (instantly available) and begins polling Twitch.
-State is stored in `data.sqlite` next to where you start the bot (override with `DB_PATH`).
-`better-sqlite3` ships prebuilt binaries for current Node LTS versions; if `npm install` has to compile it,
-you need a C++ toolchain installed.
+On start the bot opens a health-check HTTP server on `$PORT` (default 10000, bound to `0.0.0.0`; any `GET` returns
+`200 OK`), registers `/link` and `/unlink` in your guild (instantly available) and begins polling Twitch.
 
-To keep it running, use a process manager such as `pm2 start src/index.js --name mc-live-badge`.
+### Database
+
+- **Default:** a local SQLite file at `DATABASE_PATH` (default `./data.sqlite`). The directory is created if missing and
+  the full path is logged at startup. Good for your own machine or a host with a persistent disk.
+- **Hosted / no persistent disk:** set `DATABASE_URL` (and `DATABASE_AUTH_TOKEN`) to a libSQL database such as a free
+  [Turso](https://turso.tech) one. `DATABASE_URL` takes priority over `DATABASE_PATH`. The same table is created
+  automatically. This is what keeps links permanent on Render's free plan.
+
+To keep it running on your own machine, use a process manager such as `pm2 start src/index.js --name mc-live-badge`.
+
+## Deploying free on Render
+
+1. Create a **Web Service** from this repo: build `npm install`, start `node src/index.js`, plan **Free**.
+2. Create a free Turso database (`turso db create mc-live-badge`, `turso db show mc-live-badge --url`,
+   `turso db tokens create mc-live-badge`) and set `DATABASE_URL` and `DATABASE_AUTH_TOKEN` in Render.
+3. Set the Discord, Twitch, `MC_HTTP_URL` and `MC_SECRET_TOKEN` variables. `MC_HTTP_URL` must be your Minecraft
+   server's **public** address (not `127.0.0.1`), and the plugin's `bind-address` must allow it.
+4. Free web services sleep after 15 minutes without inbound requests, which would stop the bot polling. Point a free
+   uptime monitor (e.g. UptimeRobot, 5-minute interval) at `https://<your-service>.onrender.com` to keep it awake.
+   Free instances get ~750 hours a month, enough for one always-on service.
 
 ## Commands
 

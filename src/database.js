@@ -1,47 +1,87 @@
-import Database from 'better-sqlite3';
+import { createClient } from '@libsql/client';
+import { mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { config } from './config.js';
 
-const db = new Database(process.env.DB_PATH || 'data.sqlite');
-db.pragma('journal_mode = WAL');
+function connect() {
+  if (config.database.url) {
+    const { protocol, host } = new URL(config.database.url);
+    console.log(`[db] using remote database ${protocol}//${host}`);
+    return createClient({ url: config.database.url, authToken: config.database.authToken });
+  }
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS streamers (
-    discord_id TEXT PRIMARY KEY,
-    mc_uuid TEXT NOT NULL,
-    mc_username TEXT NOT NULL,
-    twitch_id TEXT NOT NULL,
-    twitch_login TEXT NOT NULL,
-    is_live INTEGER DEFAULT 0
-  );
-`);
+  const file = resolve(config.database.path);
+  mkdirSync(dirname(file), { recursive: true });
+  console.log(`[db] using SQLite file ${file}`);
+  return createClient({ url: `file:${file.replaceAll('\\', '/')}` });
+}
 
-const stmts = {
-  get: db.prepare('SELECT * FROM streamers WHERE discord_id = ?'),
-  all: db.prepare('SELECT * FROM streamers'),
-  upsert: db.prepare(`
-    INSERT INTO streamers (discord_id, mc_uuid, mc_username, twitch_id, twitch_login, is_live)
-    VALUES (@discord_id, @mc_uuid, @mc_username, @twitch_id, @twitch_login, 0)
-    ON CONFLICT(discord_id) DO UPDATE SET
-      mc_uuid = excluded.mc_uuid,
-      mc_username = excluded.mc_username,
-      twitch_id = excluded.twitch_id,
-      twitch_login = excluded.twitch_login,
-      is_live = 0
-  `),
-  remove: db.prepare('DELETE FROM streamers WHERE discord_id = ?'),
-  setLive: db.prepare('UPDATE streamers SET is_live = ? WHERE discord_id = ?'),
-  findConflict: db.prepare(
-    'SELECT * FROM streamers WHERE discord_id != ? AND (mc_uuid = ? OR twitch_id = ?) LIMIT 1',
-  ),
-};
+const db = connect();
 
-export const getStreamer = (discordId) => stmts.get.get(discordId);
-export const getAllStreamers = () => stmts.all.all();
-export const saveStreamer = (row) => stmts.upsert.run(row);
-export const deleteStreamer = (discordId) => stmts.remove.run(discordId);
-export const setLiveFlag = (discordId, isLive) => stmts.setLive.run(isLive ? 1 : 0, discordId);
+/** Create the table if needed. Call once at startup. */
+export async function initDatabase() {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS streamers (
+      discord_id TEXT PRIMARY KEY,
+      mc_uuid TEXT NOT NULL,
+      mc_username TEXT NOT NULL,
+      twitch_id TEXT NOT NULL,
+      twitch_login TEXT NOT NULL,
+      is_live INTEGER DEFAULT 0
+    )
+  `);
+}
+
+/** libSQL rows are array-like; hand callers plain objects. */
+const toObject = (row) => (row ? { ...row } : undefined);
+
+export async function getStreamer(discordId) {
+  const { rows } = await db.execute({
+    sql: 'SELECT * FROM streamers WHERE discord_id = ?',
+    args: [discordId],
+  });
+  return toObject(rows[0]);
+}
+
+export async function getAllStreamers() {
+  const { rows } = await db.execute('SELECT * FROM streamers');
+  return rows.map(toObject);
+}
+
+export async function saveStreamer(row) {
+  await db.execute({
+    sql: `
+      INSERT INTO streamers (discord_id, mc_uuid, mc_username, twitch_id, twitch_login, is_live)
+      VALUES (?, ?, ?, ?, ?, 0)
+      ON CONFLICT(discord_id) DO UPDATE SET
+        mc_uuid = excluded.mc_uuid,
+        mc_username = excluded.mc_username,
+        twitch_id = excluded.twitch_id,
+        twitch_login = excluded.twitch_login,
+        is_live = 0
+    `,
+    args: [row.discord_id, row.mc_uuid, row.mc_username, row.twitch_id, row.twitch_login],
+  });
+}
+
+export async function deleteStreamer(discordId) {
+  await db.execute({ sql: 'DELETE FROM streamers WHERE discord_id = ?', args: [discordId] });
+}
+
+export async function setLiveFlag(discordId, isLive) {
+  await db.execute({
+    sql: 'UPDATE streamers SET is_live = ? WHERE discord_id = ?',
+    args: [isLive ? 1 : 0, discordId],
+  });
+}
 
 /** Another Discord user that already claimed this Minecraft account or Twitch channel. */
-export const findConflict = (discordId, mcUuid, twitchId) =>
-  stmts.findConflict.get(discordId, mcUuid, twitchId);
+export async function findConflict(discordId, mcUuid, twitchId) {
+  const { rows } = await db.execute({
+    sql: 'SELECT * FROM streamers WHERE discord_id != ? AND (mc_uuid = ? OR twitch_id = ?) LIMIT 1',
+    args: [discordId, mcUuid, twitchId],
+  });
+  return toObject(rows[0]);
+}
 
 export const closeDatabase = () => db.close();

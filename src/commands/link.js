@@ -23,14 +23,14 @@ export async function execute(interaction) {
     lookupTwitchUser(interaction.options.getString('twitch', true)),
   ]);
 
-  const taken = findConflict(interaction.user.id, mc.uuid, twitch.id);
+  const taken = await findConflict(interaction.user.id, mc.uuid, twitch.id);
   if (taken) {
     const what = taken.mc_uuid === mc.uuid ? `Minecraft account \`${mc.username}\`` : `Twitch channel \`${twitch.login}\``;
     throw new UserError(`The ${what} is already linked to another Discord user.`);
   }
 
   // Relinking to a different Minecraft account: clear the badge from the old one.
-  const previous = getStreamer(interaction.user.id);
+  const previous = await getStreamer(interaction.user.id);
   if (previous?.is_live && previous.mc_uuid !== mc.uuid) {
     try {
       await minecraft.setOffline(previous.mc_uuid);
@@ -39,7 +39,7 @@ export async function execute(interaction) {
     }
   }
 
-  saveStreamer({
+  await saveStreamer({
     discord_id: interaction.user.id,
     mc_uuid: mc.uuid,
     mc_username: mc.username,

@@ -10,7 +10,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const row = getStreamer(interaction.user.id);
+  const row = await getStreamer(interaction.user.id);
   if (!row) throw new UserError('You do not have a linked account.');
 
   try {
@@ -25,7 +25,7 @@ export async function execute(interaction) {
     }
   }
 
-  deleteStreamer(interaction.user.id);
+  await deleteStreamer(interaction.user.id);
   console.log(`[unlink] ${interaction.user.tag}: ${row.mc_username}`);
   await interaction.editReply(`Unlinked **${row.mc_username}** from Twitch channel **${row.twitch_login}**.`);
 }
