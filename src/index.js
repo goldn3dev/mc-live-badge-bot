@@ -3,7 +3,6 @@ import { config } from './config.js';
 import { closeDatabase } from './database.js';
 import { UserError } from './errors.js';
 import { startScheduler, stopScheduler } from './scheduler.js';
-import * as rcon from './services/rcon.js';
 import * as link from './commands/link.js';
 import * as unlink from './commands/unlink.js';
 
@@ -50,7 +49,6 @@ process.on('unhandledRejection', (err) => console.error('[process] unhandled rej
 async function shutdown(signal) {
   console.log(`[process] ${signal} received, shutting down`);
   stopScheduler();
-  await rcon.close();
   await client.destroy();
   closeDatabase();
   process.exit(0);
@@ -63,8 +61,6 @@ async function main() {
   await client.login(config.discord.token);
   console.log(`[discord] logged in as ${client.user.tag}`);
 
-  // Not fatal: the reconnect loop keeps trying and commands retry on demand.
-  rcon.connect().catch(() => {});
   startScheduler();
 }
 

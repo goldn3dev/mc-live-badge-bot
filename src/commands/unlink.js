@@ -1,7 +1,7 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { deleteStreamer, getStreamer } from '../database.js';
 import { UserError } from '../errors.js';
-import * as rcon from '../services/rcon.js';
+import * as minecraft from '../services/minecraft.js';
 
 export const data = new SlashCommandBuilder()
   .setName('unlink')
@@ -14,7 +14,7 @@ export async function execute(interaction) {
   if (!row) throw new UserError('You do not have a linked account.');
 
   try {
-    await rcon.setOffline(row.mc_uuid);
+    await minecraft.setOffline(row.mc_uuid);
   } catch (err) {
     console.error(`[unlink] could not clear badge for ${row.mc_username}:`, err.message);
     // If the badge may still be on the player, keep the row so the user can retry.

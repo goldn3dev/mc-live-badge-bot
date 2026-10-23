@@ -2,7 +2,7 @@ import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { findConflict, getStreamer, saveStreamer } from '../database.js';
 import { UserError } from '../errors.js';
 import { lookupMinecraftUser } from '../services/mojang.js';
-import * as rcon from '../services/rcon.js';
+import * as minecraft from '../services/minecraft.js';
 import { lookupTwitchUser } from '../services/twitch.js';
 
 export const data = new SlashCommandBuilder()
@@ -33,7 +33,7 @@ export async function execute(interaction) {
   const previous = getStreamer(interaction.user.id);
   if (previous?.is_live && previous.mc_uuid !== mc.uuid) {
     try {
-      await rcon.setOffline(previous.mc_uuid);
+      await minecraft.setOffline(previous.mc_uuid);
     } catch (err) {
       console.error(`[link] could not clear old badge for ${previous.mc_username}:`, err.message);
     }

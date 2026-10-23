@@ -8,6 +8,20 @@ function required(name) {
   return value;
 }
 
+function httpUrl(name) {
+  const value = required(name);
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`Environment variable ${name} must be a full URL, got "${value}"`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`Environment variable ${name} must be an http(s) URL, got "${value}"`);
+  }
+  return url.toString();
+}
+
 function int(name, fallback) {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -28,14 +42,9 @@ export const config = {
     clientId: required('TWITCH_CLIENT_ID'),
     clientSecret: required('TWITCH_CLIENT_SECRET'),
   },
-  rcon: {
-    host: process.env.RCON_HOST?.trim() || '127.0.0.1',
-    port: int('RCON_PORT', 25575),
-    password: required('RCON_PASSWORD'),
+  minecraft: {
+    url: httpUrl('MC_HTTP_URL'),
+    secretToken: required('MC_SECRET_TOKEN'),
   },
   checkIntervalSeconds: int('CHECK_INTERVAL_SECONDS', 60),
-  // dotenv keeps leading whitespace in unquoted values, but be defensive about it.
-  liveSuffix: process.env.LIVE_SUFFIX ?? ' &c🎥',
-  suffixPriority: int('SUFFIX_PRIORITY', 100),
-  announceLive: (process.env.ANNOUNCE_LIVE ?? 'true').trim().toLowerCase() !== 'false',
 };

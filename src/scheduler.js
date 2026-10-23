@@ -1,6 +1,6 @@
 import { config } from './config.js';
 import { getAllStreamers, setLiveFlag } from './database.js';
-import * as rcon from './services/rcon.js';
+import * as minecraft from './services/minecraft.js';
 import { getLiveUserIds } from './services/twitch.js';
 
 let timer = null;
@@ -24,11 +24,11 @@ export async function checkOnce() {
     const isLive = liveIds.has(s.twitch_id);
     try {
       if (isLive && !s.is_live) {
-        await rcon.setLive(s.mc_uuid, s.twitch_login, s.mc_username);
+        await minecraft.setLive(s.mc_uuid, s.twitch_login);
         setLiveFlag(s.discord_id, true);
         console.log(`[scheduler] ${s.mc_username} went LIVE (twitch/${s.twitch_login})`);
       } else if (!isLive && s.is_live) {
-        await rcon.setOffline(s.mc_uuid);
+        await minecraft.setOffline(s.mc_uuid);
         setLiveFlag(s.discord_id, false);
         console.log(`[scheduler] ${s.mc_username} went OFFLINE (twitch/${s.twitch_login})`);
       }
