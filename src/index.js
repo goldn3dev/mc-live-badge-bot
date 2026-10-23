@@ -9,8 +9,28 @@ import * as unlink from './commands/unlink.js';
 
 const commands = new Map([link, unlink].map((c) => [c.data.name, c]));
 
+/** Run a startup step, logging when it begins, ends and (if it drags on) that it is still pending. */
+async function step(name, fn) {
+  const started = Date.now();
+  console.log(`[startup] ${name}...`);
+  const watchdog = setInterval(
+    () => console.warn(`[startup] ${name} still pending after ${Math.round((Date.now() - started) / 1000)}s`),
+    15_000,
+  );
+  try {
+    const result = await fn();
+    console.log(`[startup] ${name} done in ${Date.now() - started}ms`);
+    return result;
+  } finally {
+    clearInterval(watchdog);
+  }
+}
+
 async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(config.discord.token);
+  rest.on('rateLimited', (info) =>
+    console.warn(`[discord] rate limited on ${info.method} ${info.route}, retry in ${info.timeToReset}ms (global: ${info.global})`),
+  );
   await rest.put(Routes.applicationGuildCommands(config.discord.clientId, config.discord.guildId), {
     body: [...commands.values()].map((c) => c.data.toJSON()),
   });
@@ -43,6 +63,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 client.on(Events.Error, (err) => console.error('[discord] client error:', err));
+client.on(Events.ShardReady, (id) => console.log(`[discord] shard ${id} ready`));
+client.on(Events.ShardError, (err, id) => console.error(`[discord] shard ${id} error:`, err.message));
+client.on(Events.ShardDisconnect, (event, id) => console.warn(`[discord] shard ${id} disconnected (code ${event.code})`));
+client.rest.on('rateLimited', (info) =>
+  console.warn(`[discord] rate limited on ${info.method} ${info.route}, retry in ${info.timeToReset}ms (global: ${info.global})`),
+);
 
 // Keep a stray rejection (e.g. a dropped socket) from taking the bot down.
 process.on('unhandledRejection', (err) => console.error('[process] unhandled rejection:', err));
@@ -66,12 +92,18 @@ async function main() {
     console.log(`[health] listening on 0.0.0.0:${config.port}`),
   );
 
-  await initDatabase();
-  await registerCommands();
-  await client.login(config.discord.token);
+  await step('initialising database', initDatabase);
+
+  // Log in first so the bot shows online even if command registration is slow or fails.
+  await step('logging in to Discord', () => client.login(config.discord.token));
   console.log(`[discord] logged in as ${client.user.tag}`);
 
   startScheduler();
+
+  // Commands persist on Discord's side, so a failure here is not fatal.
+  step('registering slash commands', registerCommands).catch((err) =>
+    console.error('[discord] command registration failed:', err),
+  );
 }
 
 main().catch((err) => {
