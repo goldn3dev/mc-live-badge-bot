@@ -5,6 +5,7 @@ import { getLiveUserIds } from './services/twitch.js';
 
 let timer = null;
 let stopped = false;
+let resyncFailing = false;
 
 /** One polling pass. Twitch/Minecraft failures are handled here; the caller guards against anything else. */
 export async function checkOnce() {
@@ -23,10 +24,19 @@ export async function checkOnce() {
     return;
   }
 
+  let resyncFailure = null;
   for (const s of streamers) {
     const isLive = liveIds.has(s.twitch_id);
     try {
-      if (isLive && !s.is_live) {
+      if (isLive && s.is_live) {
+        // Still live: re-send anyway. The plugin only keeps its live list in memory, so after a Minecraft
+        // server restart the badges would otherwise be gone until the stream ended and restarted.
+        try {
+          await minecraft.setLive(s.mc_uuid, s.twitch_login);
+        } catch (err) {
+          resyncFailure ??= err;
+        }
+      } else if (isLive && !s.is_live) {
         await minecraft.setLive(s.mc_uuid, s.twitch_login);
         await setLiveFlag(s.discord_id, true);
         console.log(`[scheduler] ${s.mc_username} went LIVE (twitch/${s.twitch_login})`);
@@ -40,6 +50,14 @@ export async function checkOnce() {
       console.error(`[scheduler] could not update ${s.mc_username}, will retry:`, err.message);
     }
   }
+
+  // Log re-send trouble once when it starts and once when it clears, not every minute.
+  if (resyncFailure && !resyncFailing) {
+    console.warn(`[scheduler] could not refresh badges of live streamers, will keep trying: ${resyncFailure.message}`);
+  } else if (!resyncFailure && resyncFailing) {
+    console.log('[scheduler] badge refresh is working again');
+  }
+  resyncFailing = Boolean(resyncFailure);
 }
 
 export function startScheduler() {
